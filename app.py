@@ -1,47 +1,97 @@
-# Basic Streamlit app
+# Basic Streamlit chat app
 #
-# A counter with two buttons ++ and -- to change the score
+# A chat app that returns a random integer and maintains history
 
 import streamlit as st
-import matplotlib.pyplot as plt
+import numpy as np
 
-# Define initial session state variables
-if 'my_int' not in st.session_state:
-    st.session_state.my_int = [0]
-
-# Callback functions
-def my_int_chg(n):
-    new_int = st.session_state.my_int[-1] + n
-    st.session_state.my_int.append(new_int)
+# Define the users
+COMPUTER = {'name': 'Computer',
+            'icon': "🐱"}
+HUMAN = {'name': 'Human',
+            'icon': "🧔"}
 
 
-# Render page and UI
-st.write(f"A first attempt at a living value which you can modify with buttons")
-st.write(f"### The integer is: {st.session_state.my_int[-1]}")
-st.text("")
-st.text("")
+# Initialize variables
+if 'chat_history' not in st.session_state:
+    # Make sure this only runs the first time the app is initialised!
+    # Otherwise the history and number will be erased!!!
+    st.session_state.chat_history = []
+    st.session_state.rand_num = np.random.randint(0,9)
 
-col_a, col_b, col_rest = st.columns([0.1,0.1,0.8])
-with col_a:
-    st.button("👍 +", help="Increment the integer by one",
-              on_click=my_int_chg, args=(1,))
 
-with col_b:
-    st.button("👎 -", help="Decrement the integer by one",
-              on_click=my_int_chg, args=(-1,))
+# Initialise the message writer
+def save(user, txt):
+    '''Saves a message to the chat history.'''
+    num = len(st.session_state.chat_history) + 1
+    st.session_state.chat_history.append(
+        {"num": num,
+        "user": user,
+        "txt": txt})
 
+def say(user, txt):
+    '''Writes a message to the chat screen as str.'''
+    with st.chat_message(user['name'], 
+                        avatar=user['icon']):
+        st.write(txt)
+        
+def say_and_save(user, txt):
+    '''First saves the message to history then writes it to the screen'''
+    save(user, txt)
+    say(user, txt)
+
+# Define the Computer's message logic
+def reply_message(input_txt:str):
+    '''
+    Takes the user input message and returns the computer response.
+    Returns a tuple with the message and win condition.
+    
+    return (str, bool)
+    '''
+
+    wrong_int_txt = "This is not an integer between 0 and 9.", False
+    try:
+        input_int = float(input_txt)
+    except:
+        return wrong_int_txt    
+    if input_int < 0 or input_int > 9:
+        return wrong_int_txt
+    
+    if input_int == st.session_state.rand_num:
+        return "This is the correct number! 🥳🎉🙌", True
+    
+    if input_int < st.session_state.rand_num:
+        return "The secret number is higher.", False
+    if input_int > st.session_state.rand_num:
+        return "The secret number is lower.", False
+    pass
+
+
+## Start the UI and app
+st.write("## Guess the secret number between 0 and 9!")
+
+# Set the intro message from the Computer
+# This should also only run once. Othewise the computer will spam.
+if len(st.session_state.chat_history) < 1:
+    save(COMPUTER, f"Try guessing the number. Type any integer from 0 to 9.")
+    save(COMPUTER, f"I will tell you if its lower or higher.")    
+
+# Show all the messages
+for msg in st.session_state.chat_history:
+        say(msg['user'], msg['txt'])
+
+# Human chat entry
+# MUST USE WALRUS OPERATOR (:=) to continuously add messages to the history
+if prompt := st.chat_input("Type something to the computer...."):
+    say_and_save(HUMAN, prompt)
+    response, win = reply_message(prompt)
+    say_and_save(COMPUTER, response)
+    if win:
+        st.balloons()
+
+
+# Create the debug space
 st.divider()
-st.write(f"With a history: {st.session_state.my_int}")
-# st.line_chart(data=st.session_state.my_int)
-# Line chart with historic values
-plt.style.use("dark_background")
-fig, axs = plt.subplots(1, 2, layout='constrained')
-axs[0].set_ylabel("Integer value")
-axs[0].set_xlabel("Number of changes")
-axs[1].set_ylabel("Number of occurences")
-axs[1].set_xlabel("Integer value")
-
-axs[0].plot(st.session_state.my_int)
-axs[1].hist(st.session_state.my_int, bins=11)
-
-st.pyplot(fig)
+with st.expander("Show debug:", expanded=False):
+    st.write(st.session_state.rand_num)
+    st.write(st.session_state.chat_history)

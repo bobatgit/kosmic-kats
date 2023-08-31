@@ -1,5 +1,8 @@
+python-dotenv
 streamlit
 matplotlib
 numpy
 scipy
 statsmodels
+openai
+

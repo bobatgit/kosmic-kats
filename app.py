@@ -3,23 +3,36 @@
 # A chat app that returns a random integer and maintains history
 
 import streamlit as st
+import openai as ai
 import numpy as np
+import os
+from dotenv import load_dotenv
+import re
 
+
+## INITIALIZATION ##
 # Define the users
 COMPUTER = {'name': 'Computer',
             'icon': "🐱"}
+AI = {'name': 'The AI',
+            'icon': "🧠"}
 HUMAN = {'name': 'Human',
             'icon': "🧔"}
-
 
 # Initialize variables
 if 'chat_history' not in st.session_state:
     # Make sure this only runs the first time the app is initialised!
     # Otherwise the history and number will be erased!!!
     st.session_state.chat_history = []
+    st.session_state.gpt_requests = []
     st.session_state.rand_num = np.random.randint(0,9)
 
+# Load OpenAI
+load_dotenv()
+ai.api_key = os.environ["KEY_OPENAI"]
 
+
+## FUNCTIONS ##
 # Initialise the message writer
 def save(user, txt):
     '''Saves a message to the chat history.'''
@@ -40,6 +53,44 @@ def say_and_save(user, txt):
     save(user, txt)
     say(user, txt)
 
+# OpenAI ChatGPT interface
+def get_completion(prompt):
+    """
+    Takes user input text and tries to extract a number using GPT3.
+    
+    Returns a tuple with the extracted number and total GPT tokens used.
+    """
+    model="gpt-4"
+    # TODO: GPT-4 is expensive. Use a lower cost model to extract numbers.
+    prompt = f"""
+        Given the text <{prompt}> what is the first number present? 
+        Respond with the number []. If no number is found respond with [NaN].
+        """
+    messages = [{"role": "user", "content": prompt}]
+    response = ai.ChatCompletion.create(
+        model=model,
+        messages=messages,
+        temperature=0, # this is the degree of randomness of the model's output
+    )
+    
+    # Return the useful output
+    useful_response = response.choices[0].message.content
+    pattern = r'\[(.*?)\]'  # Regular expression pattern to match text within []
+    matches = re.findall(pattern, useful_response)
+    number = matches[0]
+
+    # Track the GPT3 requests
+    st.session_state.gpt_requests.append(
+        {"num": len(st.session_state.gpt_requests),
+         "input": prompt,
+         "output": number,
+         "tokens": response.usage.total_tokens,
+         "full_response": response}
+    )
+
+    return number
+
+
 # Define the Computer's message logic
 def reply_message(input_txt:str):
     '''
@@ -49,13 +100,21 @@ def reply_message(input_txt:str):
     return (str, bool)
     '''
 
-    wrong_int_txt = "This is not an integer between 0 and 9.", False
     try:
-        input_int = float(input_txt)
+        input_int = int(input_txt)
     except:
-        return wrong_int_txt    
+        # Assume the input a number as text. Extract with GPT3.
+        input_int = get_completion(input_txt)
+        say_and_save(AI, f"The AI has found: {input_int}")
+        if isinstance(input_int, str):
+            if input_int == "NaN":
+                return "Looks like GPT4 cannot see a number in your message. \
+                    Please enter an integer between 0 and 9.", False
+        # Now make it into an int
+        input_int = int(input_int)
+
     if input_int < 0 or input_int > 9:
-        return wrong_int_txt
+        return "This is not an integer between 0 and 9.", False
     
     if input_int == st.session_state.rand_num:
         return "This is the correct number! 🥳🎉🙌", True
@@ -67,7 +126,8 @@ def reply_message(input_txt:str):
     pass
 
 
-## Start the UI and app
+## MAIN ##
+# Start the UI and app
 st.write("## Guess the secret number between 0 and 9!")
 
 # Set the intro message from the Computer
@@ -93,5 +153,11 @@ if prompt := st.chat_input("Type something to the computer...."):
 # Create the debug space
 st.divider()
 with st.expander("Show debug:", expanded=False):
-    st.write(st.session_state.rand_num)
-    st.write(st.session_state.chat_history)
+    tab1, tab2, tab3 = st.tabs(["GPT3 Requests","Chat History","Random Number"])
+    with tab1:
+        st.write(st.session_state.gpt_requests)
+    with tab2:
+        st.write(st.session_state.chat_history)
+    with tab3:
+        st.write(st.session_state.rand_num)
+
